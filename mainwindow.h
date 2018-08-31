@@ -35,8 +35,14 @@ public:
 
     void reset();
 
+    void init();
+
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
+
+    void runSteamScripts();
+
+    void runHumbleBundleScripts();
 
 public slots:
     void webpageReady(bool isReady);
@@ -46,22 +52,34 @@ public slots:
 signals:
     void readyForNext();
 
+    void done();
+
+    void nextOne();
+
+    void finish();
+
 private slots:
     void on_pushButton_clicked();
 
     void on_radioButtonPage_toggled(bool checked);
 
 private:
-    QWebEngineView *view;
     Ui::MainWindow *ui;
+    QWebEngineView *view;
+    QNetworkAccessManager *manager;
+
+    QString currentAppId = "";
+    QString currentUrl = "";
+
     QStringList appIds;
     QStringList platforms;
-    QNetworkAccessManager *manager;
+    QStringList humbleList;
+
     bool apiResponseReady = false;
-    QString currentAppId = "";
-    int pageCount = 0;
-    QString currentUrl = "";
     bool showHeader = true;
+
+    int pageCount = 0;
+    int websiteType = 0;//0 = Steam 1 == HumbleBundle
 };
 
 #endif // MAINWINDOW_H

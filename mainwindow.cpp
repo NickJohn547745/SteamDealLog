@@ -15,11 +15,13 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(view, SIGNAL(loadFinished(bool)), this, SLOT(webpageReady(bool)));
     connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(replyFinished(QNetworkReply*)));
 
+    init();
     reset();
 }
 
 MainWindow::~MainWindow()
 {
+    delete view;
     delete ui;
 }
 
@@ -27,30 +29,69 @@ void MainWindow::webpageReady(bool isReady)
 {
     if (isReady)
     {
-        if (showHeader)
+        if (websiteType == 0)
+            runSteamScripts();
+        else if (websiteType == 1)
         {
-            view->page()->runJavaScript("for(var elements=document.getElementsByClassName(\"search_pagination_right\")[0].innerText.replace(\"...\",\"\").replace(\"<\",\"\").replace(\">\",\"\").replace(/\t/g,\" \").split(\" \"),pages=[],i=0;i<elements.length;i++)\"\"!=elements[i].trim()&&pages.push(parseInt(elements[i].trim()));Math.max.apply(null,pages);",
-                                        [&](const QVariant &v) {
-                qDebug() << 1111;
-                pageCount = v.toString().toInt();
-                ui->spinBoxStart->setMaximum(pageCount);
-                ui->spinBoxEnd->setMaximum(pageCount);
-            });
+            /*QEventLoop loop;
+            QTimer *timer = new QTimer(this);
+
+            connect(timer, SIGNAL(timeout()), &loop, SLOT(quit()));
+            connect(this, SIGNAL(finish()), &loop, SLOT(quit()));
+            connect(this, SIGNAL(finish()), timer, SLOT(stop()));
+
+            timer->start(5000);*/
+
+            runHumbleBundleScripts();
+            //loop.exec();
+            qDebug() << "DONE!";
         }
-
-        view->page()->runJavaScript("var elements=document.getElementById(\"search_result_container\").getElementsByTagName(\"div\")[1].getElementsByTagName(\"a\");var platforms=[];for(var i=0;i<elements.length;i++){var e=elements[i].getElementsByClassName(\"responsive_search_name_combined\")[0].getElementsByClassName(\"search_name\")[0].getElementsByTagName(\"p\")[0].getElementsByTagName(\"span\");var vrString=\"\";for(var x=0;x<e.length;x++){if(e[x].getAttribute(\"title\")){vrString+=e[x].getAttribute(\"title\");vrString+=\" \"}}platforms.push(vrString)}platforms;",
+    }
+}
+void MainWindow::runSteamScripts()
+{
+    appIds.clear();
+    if (showHeader)
+    {
+        view->page()->runJavaScript("for(var elements=document.getElementsByClassName(\"search_pagination_right\")[0].innerText.replace(\"...\",\"\").replace(\"<\",\"\").replace(\">\",\"\").replace(/\t/g,\" \").split(\" \"),pages=[],i=0;i<elements.length;i++)\"\"!=elements[i].trim()&&pages.push(parseInt(elements[i].trim()));Math.max.apply(null,pages);",
                                     [&](const QVariant &v) {
-            qDebug() << 2222;
-            platforms = v.toStringList();
-        });
-
-        view->page()->runJavaScript("var elements=document.getElementById(\"search_result_container\").getElementsByTagName(\"div\")[1].getElementsByTagName(\"a\");var idList=[];for(var i=0;i<elements.length;i++){idList.push(elements[i].getAttribute(\"data-ds-appid\"))}idList;",
-                                    [&](const QVariant &v) {
-            qDebug() << 3333;
-            appIds = v.toStringList();
-            waitForAppIds();
+            qDebug() << 1111;
+            pageCount = v.toString().toInt();
+            ui->spinBoxStart->setMaximum(pageCount);
+            ui->spinBoxEnd->setMaximum(pageCount);
         });
     }
+
+    view->page()->runJavaScript("var elements=document.getElementById(\"search_result_container\").getElementsByTagName(\"div\")[1].getElementsByTagName(\"a\");var platforms=[];for(var i=0;i<elements.length;i++){var e=elements[i].getElementsByClassName(\"responsive_search_name_combined\")[0].getElementsByClassName(\"search_name\")[0].getElementsByTagName(\"p\")[0].getElementsByTagName(\"span\");var vrString=\"\";for(var x=0;x<e.length;x++){if(e[x].getAttribute(\"title\")){vrString+=e[x].getAttribute(\"title\");vrString+=\" \"}}platforms.push(vrString)}platforms;",
+                                [&](const QVariant &v) {
+        qDebug() << 2222;
+        platforms = v.toStringList();
+    });
+
+    view->page()->runJavaScript("var elements=document.getElementById(\"search_result_container\").getElementsByTagName(\"div\")[1].getElementsByTagName(\"a\");var idList=[];for(var i=0;i<elements.length;i++){idList.push(elements[i].getAttribute(\"data-ds-appid\"))}idList;",
+                                [&](const QVariant &v) {
+        qDebug() << 3333;
+        appIds = v.toStringList();
+        waitForAppIds();
+    });
+}
+
+void MainWindow::runHumbleBundleScripts()
+{
+    humbleList.clear();
+    view->page()->runJavaScript("if(\"display: none;\"!=document.getElementsByClassName(\"js-loading-overlay overlay\")[0].getAttribute(\"style\")){\"false\"}else{for(var e=document.getElementsByClassName(\"entities-list\")[0].getElementsByClassName(\"entity-block-container js-entity-container\"),t=[],a=0;a<e.length;a++){for(var r=document.getElementsByClassName(\"entities-list\")[0].getElementsByTagName(\"li\")[0].getElementsByClassName(\"operating-system\"),n=\"\",l=0;l<r.length;l++)n+=r[l].title+\" \";t.push(n.trim()+\"|\"+e[a].getElementsByClassName(\"entity-title\")[0].getAttribute(\"title\")+\"|\"+e[a].getElementsByClassName(\"price\")[0].innerHTML.replace(\"$\",\"\").trim())}t}",
+                                [&](const QVariant &v) {
+        if (v.toString() == "false")
+            runHumbleBundleScripts();
+        else
+        {
+            qDebug() << 4444;
+            humbleList = v.toStringList();
+            qDebug() << humbleList;
+            emit finish();
+            waitForAppIds();
+        }
+    });
 }
 
 void MainWindow::replyFinished(QNetworkReply *reply)
@@ -87,10 +128,10 @@ void MainWindow::waitForAppIds()
     {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
     }
-    if (appIds.isEmpty() || platforms.isEmpty() || pageCount == 0)
-        waitForAppIds();
-    else
+    if (websiteType == 0)
     {
+        if (appIds.isEmpty() || platforms.isEmpty() || pageCount == 0)
+            waitForAppIds();
         if (!ui->radioButtonRange->isChecked())
         {
             if (ui->checkBox->isChecked())
@@ -121,6 +162,34 @@ void MainWindow::waitForAppIds()
             }
         }
         getDataFromIds(appIds);
+    }
+    else if (websiteType == 1)
+    {
+        if (humbleList.isEmpty())
+            waitForAppIds();
+        if (showHeader)
+        {
+            if (ui->checkBox->isChecked())
+            {
+                ui->plainTextEdit->setPlainText(ui->plainTextEdit->toPlainText() + "| PLATFORM        | NAME                                                    | NEW $      |\n");
+                ui->plainTextEdit->setPlainText(ui->plainTextEdit->toPlainText() + "|-----------------|---------------------------------------------------------|------------|\n");
+            }
+            else
+            {
+                ui->plainTextEdit->setPlainText(ui->plainTextEdit->toPlainText() + "| NAME                                                    | NEW $      |\n");
+                ui->plainTextEdit->setPlainText(ui->plainTextEdit->toPlainText() + "|---------------------------------------------------------|------------|\n");
+            }
+        }
+        foreach (QString line, humbleList)
+        {
+            QStringList parameters = line.split("|");
+            if (ui->checkBox->isChecked())
+                ui->plainTextEdit->setPlainText(ui->plainTextEdit->toPlainText() + "| " + QString(parameters[0]).replace("Windows", "").replace("Android", "").replace("Mac", "").replace("Linux", "").replace("Oculus Rift", "Rift").replace("HTC Vive", "Vive").trimmed().replace(" ", "/").leftJustified(15, ' ') + " | " + QString(parameters[1]).leftJustified(55, ' ')+ " | " /* + QString(parameters[2]).leftJustified(10, ' ') + " | " + QString(parameters[3]).leftJustified(10, ' ') + " | " + */ + QString(parameters[2]).leftJustified(10, ' ') + " |\n");
+            else
+                ui->plainTextEdit->setPlainText(ui->plainTextEdit->toPlainText() + "| " + QString(parameters[1]).leftJustified(55, ' ') + " | " + QString(parameters[2]).leftJustified(10, ' ')/* + " | " + QString(parameters[3]).leftJustified(10, ' ') + " | " + QString(parameters[4]).leftJustified(10, ' ') */+ " |\n");
+        }
+        showHeader = false;
+        emit readyForNext();
     }
 }
 
@@ -158,29 +227,50 @@ QString MainWindow::priceToString(int price)
 
 void MainWindow::reset()
 {
+    currentAppId = "";
+    currentUrl = "";
+
     appIds.clear();
     platforms.clear();
+    humbleList.clear();
+
     apiResponseReady = false;
-    currentAppId = "";
-    pageCount = 0;
-    currentUrl = "";
     showHeader = true;
-    ui->progressBar->show();
-    ui->progressBarPages->show();
-    ui->spinBoxPage->show();
+
+    pageCount = 0;
+    websiteType = 0;
+}
+
+void MainWindow::init()
+{
+    ui->plainTextEdit->clear();
+    ui->radioButtonPage->setChecked(true);
+    ui->checkBox->setChecked(true);
+    ui->spinBoxEnd->setValue(1);
+    ui->spinBoxPage->setValue(1);
+    ui->spinBoxStart->setValue(1);
     ui->spinBoxStart->hide();
     ui->spinBoxEnd->hide();
-    ui->radioButtonPage->setChecked(true);
     ui->label_2->hide();
 }
 
 void MainWindow::on_pushButton_clicked()
 {
-    ui->plainTextEdit->clear();
-    if (!ui->lineEdit->text().contains("https://store.steampowered.com/search/"))
-        QMessageBox::warning(this, "Error!", "Invalid URL, Should Be Formatted as \"https://store.steampowered.com/search/\"");
+    if (!ui->lineEdit->text().contains("https://store.steampowered.com/search/") && !ui->lineEdit->text().contains("https://www.humblebundle.com/store/search"))
+    {
+        if (!ui->lineEdit->text().contains("https://www.humblebundle.com/store/search"))
+            QMessageBox::warning(this, "Error!", "Invalid URL, Should Be Formatted as \"https://www.humblebundle.com/store/search\"");
+        else
+            QMessageBox::warning(this, "Error!", "Invalid URL, Should Be Formatted as \"https://store.steampowered.com/search/\"");
+    }
     else
     {
+        if (ui->lineEdit->text().contains("https://store.steampowered.com/search/"))
+            websiteType = 0;
+        else
+            websiteType = 1;
+        qDebug() << websiteType;
+
         QUrlQuery query(QUrl(ui->lineEdit->text()));
         if (query.hasQueryItem("page"))
             query.removeQueryItem("page");
@@ -199,8 +289,10 @@ void MainWindow::on_pushButton_clicked()
                 ui->progressBarPages->setMaximum(ui->spinBoxEnd->value());
                 ui->progressBarPages->setValue(x+1);
 
-                view->load(QUrl(currentUrl + "&page=" + QString::number(x)));
-                qDebug() << currentUrl + "&page=" + QString::number(x);
+                if (websiteType == 0)
+                    view->load(QUrl(currentUrl + "&page=" + QString::number(x)));
+                else
+                    view->load(QUrl(currentUrl + "&page=" + QString::number(x - 1)));
 
                 QEventLoop nextLoop;
                 connect(this, SIGNAL(readyForNext()), &nextLoop, SLOT(quit()));
@@ -208,14 +300,17 @@ void MainWindow::on_pushButton_clicked()
             }
         }
         else
-            view->load(QUrl(currentUrl + "&page=" + QString::number(ui->spinBoxPage->value())));
+        {
+            if (websiteType == 0)
+                view->load(QUrl(currentUrl + "&page=" + QString::number(ui->spinBoxPage->value())));
+            else
+                view->load(QUrl(currentUrl + "&page=" + QString::number(ui->spinBoxPage->value() - 1)));
+        }
 
     }
 
     ui->progressBar->hide();
     ui->progressBarPages->hide();
-
-    reset();
 }
 
 void MainWindow::on_radioButtonPage_toggled(bool checked)
